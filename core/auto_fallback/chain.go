@@ -15,14 +15,14 @@ type FallbackChain struct {
 
 // TunnelOption represents a tunnel configuration
 type TunnelOption struct {
-	Name         string
-	Type         string // DNS, SSH, Tor, DoH, ICMP, etc.
-	Endpoint     string
-	Port         int
-	Priority     int
-	IsActive     bool
-	FailCount    int
-	LastSuccess  time.Time
+	Name        string
+	Type        string // DNS, SSH, Tor, DoH, ICMP, etc.
+	Endpoint    string
+	Port        int
+	Priority    int
+	IsActive    bool
+	FailCount   int
+	LastSuccess time.Time
 }
 
 // NewFallbackChain creates a new fallback chain

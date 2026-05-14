@@ -8,11 +8,11 @@ import (
 
 // AdaptationModel learns filtering patterns and adapts in real-time
 type AdaptationModel struct {
-	mu               sync.RWMutex
-	detectionEvents  []DetectionEvent
+	mu                sync.RWMutex
+	detectionEvents   []DetectionEvent
 	evasionStrategies []StrategyPerformance
-	currentStrategy  string
-	learningRate     float64
+	currentStrategy   string
+	learningRate      float64
 }
 
 // DetectionEvent records when detection occurs
@@ -26,13 +26,13 @@ type DetectionEvent struct {
 
 // StrategyPerformance tracks how well strategies work
 type StrategyPerformance struct {
-	Name            string
-	SuccessRate     float64
-	LastUsed        time.Time
-	FailureCount    int
-	SuccessCount    int
-	AverageLatency  float64
-	Effectiveness   float64 // 0-1
+	Name           string
+	SuccessRate    float64
+	LastUsed       time.Time
+	FailureCount   int
+	SuccessCount   int
+	AverageLatency float64
+	Effectiveness  float64 // 0-1
 }
 
 // NewAdaptationModel creates a new ML model
@@ -41,28 +41,28 @@ func NewAdaptationModel() *AdaptationModel {
 		detectionEvents: []DetectionEvent{},
 		evasionStrategies: []StrategyPerformance{
 			{
-				Name:         "Polymorphic",
-				SuccessRate:  0.85,
+				Name:          "Polymorphic",
+				SuccessRate:   0.85,
 				Effectiveness: 0.85,
 			},
 			{
-				Name:         "Fragmentation",
-				SuccessRate:  0.72,
+				Name:          "Fragmentation",
+				SuccessRate:   0.72,
 				Effectiveness: 0.72,
 			},
 			{
-				Name:         "Timing",
-				SuccessRate:  0.68,
+				Name:          "Timing",
+				SuccessRate:   0.68,
 				Effectiveness: 0.68,
 			},
 			{
-				Name:         "Decoy",
-				SuccessRate:  0.65,
+				Name:          "Decoy",
+				SuccessRate:   0.65,
 				Effectiveness: 0.65,
 			},
 			{
-				Name:         "Protocol Morphing",
-				SuccessRate:  0.90,
+				Name:          "Protocol Morphing",
+				SuccessRate:   0.90,
 				Effectiveness: 0.90,
 			},
 		},
@@ -92,7 +92,7 @@ func (am *AdaptationModel) RecordSuccess(strategyName string, latency float64) {
 		if am.evasionStrategies[i].Name == strategyName {
 			am.evasionStrategies[i].SuccessCount++
 			am.evasionStrategies[i].LastUsed = time.Now()
-			am.evasionStrategies[i].AverageLatency = 
+			am.evasionStrategies[i].AverageLatency =
 				(am.evasionStrategies[i].AverageLatency + latency) / 2
 			am.updateSuccessRate(i)
 		}
@@ -116,11 +116,11 @@ func (am *AdaptationModel) RecordFailure(strategyName string) {
 func (am *AdaptationModel) updateSuccessRate(index int) {
 	total := am.evasionStrategies[index].SuccessCount + am.evasionStrategies[index].FailureCount
 	if total > 0 {
-		am.evasionStrategies[index].SuccessRate = 
+		am.evasionStrategies[index].SuccessRate =
 			float64(am.evasionStrategies[index].SuccessCount) / float64(total)
-		am.evasionStrategies[index].Effectiveness = 
-			am.evasionStrategies[index].SuccessRate * 
-			(1.0 - (am.evasionStrategies[index].AverageLatency / 10000.0))
+		am.evasionStrategies[index].Effectiveness =
+			am.evasionStrategies[index].SuccessRate *
+				(1.0 - (am.evasionStrategies[index].AverageLatency / 10000.0))
 	}
 }
 

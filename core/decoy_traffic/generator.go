@@ -16,11 +16,11 @@ type DecoyTrafficGenerator struct {
 
 // TrafficPattern represents a traffic type
 type TrafficPattern struct {
-	Name         string
-	PacketSize   int
-	Interval     time.Duration
-	Probability  float64
-	Description  string
+	Name        string
+	PacketSize  int
+	Interval    time.Duration
+	Probability float64
+	Description string
 }
 
 // NewDecoyTrafficGenerator creates a new generator
