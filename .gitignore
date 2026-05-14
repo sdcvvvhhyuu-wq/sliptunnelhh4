@@ -1,0 +1,68 @@
+# Build outputs
+bin/
+dist/
+build/
+*.apk
+*.aab
+*.ipa
+*.exe
+*.app
+*.dmg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.iml
+.DS_Store
+
+# Go
+vendor/
+*.o
+*.a
+*.so
+*.dylib
+go.sum
+
+# Android
+.gradle/
+local.properties
+*.jks
+release/
+
+# iOS
+*.xcworkspace/
+Pods/
+*.xcconfig
+
+# Node (if used)
+node_modules/
+package-lock.json
+
+# Logs
+*.log
+logs/
+
+# Temporary
+*.tmp
+tmp/
+.temp/
+
+# Secrets
+secrets/
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+
+# CI/CD artifacts
+github_token
+release-assets/

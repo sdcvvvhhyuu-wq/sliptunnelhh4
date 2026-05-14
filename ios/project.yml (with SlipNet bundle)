@@ -1,0 +1,20 @@
+name: SlipNet
+options:
+  bundleIdPrefix: com.slipnet
+targets:
+  SlipNet:
+    type: application
+    platform: iOS
+    sources: [path: SlipNet]
+    info: {path: SlipNet/Info.plist}
+    settings:
+      INFOPLIST_FILE: SlipNet/Info.plist
+      PRODUCT_BUNDLE_IDENTIFIER: com.slipnet.app
+  PacketTunnel:
+    type: app-extension
+    platform: iOS
+    sources: [path: PacketTunnelProvider]
+    info: {path: PacketTunnelProvider/Info.plist}
+    settings:
+      INFOPLIST_FILE: PacketTunnelProvider/Info.plist
+      PRODUCT_BUNDLE_IDENTIFIER: com.slipnet.app.extension

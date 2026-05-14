@@ -1,0 +1,381 @@
+name: ArgoTunnel Ultimate – Full Auto Build & Sign (Debug)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'نسخه (مثل v1.2.3) – خالی = افزایش خودکار از آخرین تگ'
+        required: false
+        type: string
+      auto_bump:
+        description: 'نوع افزایش خودکار نسخه (در صورت خالی بودن version)'
+        required: false
+        default: 'patch'
+        type: choice
+        options: ['patch', 'minor', 'major']
+      release_name:
+        description: 'عنوان انتشار (اختیاری)'
+        required: false
+        type: string
+      prerelease:
+        description: 'آیا pre-release باشد؟'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOPROXY: 'https://goproxy.cn,direct'
+  GOPRIVATE: 'github.com/sdcvvvhhyuu-wq/*'
+  GONOSUMDB: '*'
+  GOFLAGS: '-mod=mod'
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+      - name: Git auth for private deps
+        run: git config --global url."https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - uses: android-actions/setup-android@v4.0.1
+
+      - name: Setup Gradle & generate wrapper
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq wget unzip
+          wget -q https://services.gradle.org/distributions/gradle-8.2-bin.zip
+          unzip -q gradle-8.2-bin.zip
+          export PATH=$PWD/gradle-8.2/bin:$PATH
+          cd android
+          gradle wrapper --gradle-version 8.2
+          chmod +x gradlew
+
+      - name: Build Release APK (unsigned)
+        run: |
+          cd android
+          ./gradlew assembleRelease
+
+      - name: Sign APK with debug keystore (automatic & guaranteed)
+        run: |
+          # تولید debug keystore در صورت نبود
+          if [ ! -f debug.keystore ]; then
+            keytool -genkey -v \
+              -keystore debug.keystore \
+              -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass android -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          # امضای تمام APKهای ساخته شده
+          for apk in android/app/build/outputs/apk/release/*.apk; do
+            echo "Signing $apk with debug keystore"
+            jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
+              -keystore debug.keystore \
+              -storepass android -keypass android \
+              "$apk" androiddebugkey
+
+            # (پیشرفته) بهینه‌سازی با zipalign
+            if command -v zipalign &> /dev/null; then
+              zipalign -v -p 4 "$apk" "${apk%.apk}-aligned.apk"
+              mv "${apk%.apk}-aligned.apk" "$apk"
+            fi
+          done
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: android-apk
+          path: android/app/build/outputs/apk/release/*.apk
+
+  windows:
+    runs-on: windows-2025-vs2026
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Build Windows exe (GUI hidden)
+        run: |
+          cd core
+          Remove-Item -Force go.sum -ErrorAction SilentlyContinue
+          go clean -modcache
+          go mod edit -droprequire github.com/txthinking/socks5
+          go get github.com/txthinking/socks5@latest
+          go mod tidy
+          $env:GOOS="windows"; $env:GOARCH="amd64"; go build -ldflags="-H windowsgui" -o ../windows/ArgoTunnel.exe .
+      - uses: actions/upload-artifact@v6
+        with:
+          name: windows-exe
+          path: windows/ArgoTunnel.exe
+
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64, arm]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Build Linux static binary
+        run: |
+          cd core
+          rm -f go.sum
+          go clean -modcache
+          go mod edit -droprequire github.com/txthinking/socks5
+          go get github.com/txthinking/socks5@latest
+          go mod tidy
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.arch }} go build -o ../linux/ArgoTunnel-linux-${{ matrix.arch }} .
+      - uses: actions/upload-artifact@v6
+        with:
+          name: linux-${{ matrix.arch }}
+          path: linux/ArgoTunnel-linux-${{ matrix.arch }}
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: cd ios && xcodegen generate
+      - name: Build unsigned IPA
+        run: |
+          cd ios
+          xcodebuild clean build \
+            -project ArgoTunnel.xcodeproj \
+            -scheme ArgoTunnel \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+            -derivedDataPath ./build
+          mkdir Payload
+          cp -r build/Build/Products/Release-iphoneos/ArgoTunnel.app Payload/
+          zip -r ArgoTunnel.ipa Payload
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ios-ipa
+          path: ios/ArgoTunnel.ipa
+
+  openwrt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Prepare OpenWrt package
+        run: |
+          mkdir -p package/argotunnel
+          cp openwrt/Makefile openwrt/files/argotunnel.init package/argotunnel/
+          tar -czf openwrt-package.tar.gz -C package argotunnel
+      - uses: actions/upload-artifact@v6
+        with:
+          name: openwrt-package
+          path: openwrt-package.tar.gz
+
+  scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Build scanner CLI (argoscan)
+        run: cd scanner-cli && go build -o argoscan
+      - uses: actions/upload-artifact@v6
+        with:
+          name: scanner-cli
+          path: scanner-cli/argoscan
+
+  release:
+    needs: [android, windows, linux, ios, openwrt, scanner]
+    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      !cancelled() &&
+      (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/'))
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
+
+      - name: Determine version (auto bump from latest tag or manual)
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            if [ -n "${{ inputs.version }}" ]; then
+              TAG="${{ inputs.version }}"
+            elif [ "${{ inputs.auto_bump }}" != "none" ]; then
+              latest=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+              ver=${latest#v}
+              IFS='.' read -r major minor patch <<< "$ver"
+              case "${{ inputs.auto_bump }}" in
+                major) major=$((major+1)); minor=0; patch=0 ;;
+                minor) minor=$((minor+1)); patch=0 ;;
+                patch) patch=$((patch+1)) ;;
+              esac
+              TAG="v${major}.${minor}.${patch}"
+            else
+              echo "❌ باید نسخه را وارد کنید یا نوع bump را انتخاب کنید"
+              exit 1
+            fi
+          fi
+
+          # اعتبارسنجی قالب نسخه (باید با v شروع شود)
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\-[a-zA-Z0-9\.]+)?$ ]]; then
+            echo "❌ نسخه نامعتبر: $TAG (باید مانند v1.2.3 یا v1.2.3-beta باشد)"
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "name=$TAG" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          else
+            NAME="${{ inputs.release_name }}"
+            [ -z "$NAME" ] && NAME="$TAG"
+            echo "name=$NAME" >> $GITHUB_OUTPUT
+            echo "prerelease=${{ inputs.prerelease }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Delete existing tag if overwriting (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if git ls-remote --tags origin "refs/tags/${{ steps.meta.outputs.tag }}" | grep -q .; then
+            echo "⚠️ Removing old tag ${{ steps.meta.outputs.tag }}..."
+            git push origin :refs/tags/${{ steps.meta.outputs.tag }} || true
+          fi
+
+      - uses: actions/download-artifact@v7
+        with:
+          path: ./all-artifacts
+
+      - name: Prepare versioned assets for GitHub Release
+        run: |
+          VERSION="${{ steps.meta.outputs.tag }}"
+          mkdir -p versioned-assets
+          cp all-artifacts/android-apk/*.apk "versioned-assets/ArgoTunnel-${VERSION}.apk" 2>/dev/null || true
+          cp all-artifacts/windows-exe/ArgoTunnel.exe "versioned-assets/ArgoTunnel-${VERSION}.exe" 2>/dev/null || true
+          for arch in amd64 arm64 arm; do
+            cp all-artifacts/linux-${arch}/ArgoTunnel-linux-${arch} "versioned-assets/ArgoTunnel-linux-${arch}-${VERSION}" 2>/dev/null || true
+          done
+          cp all-artifacts/ios-ipa/ArgoTunnel.ipa "versioned-assets/ArgoTunnel-${VERSION}.ipa" 2>/dev/null || true
+          cp all-artifacts/openwrt-package/openwrt-package.tar.gz "versioned-assets/ArgoTunnel-openwrt-${VERSION}.tar.gz" 2>/dev/null || true
+          cp all-artifacts/scanner-cli/argoscan "versioned-assets/argoscan-${VERSION}" 2>/dev/null || true
+
+          cd versioned-assets
+          sha256sum * > "SHA256SUMS-${VERSION}.txt" || true
+          cd ..
+
+      - name: Generate Release Notes (auto changelog)
+        id: notes
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            LOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s" --no-merges)
+          else
+            LOG="🎉 اولین انتشار رسمی"
+          fi
+          {
+            echo "body<<EOF"
+            echo "## تغییرات نسبت به نسخه قبلی"
+            echo "$LOG"
+            echo ""
+            echo "**فایل‌های ضمیمه شده (امضا شده با debug keystore):**"
+            echo "- ArgoTunnel-${TAG}.apk (امضای خودکار debug)"
+            echo "- سایر باینری‌ها برای ویندوز، لینوکس، iOS، OpenWrt و اسکنر"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release with versioned assets
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.name }}
+          overwrite_files: true
+          make_latest: true
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          body: ${{ steps.notes.outputs.body }}
+          files: |
+            versioned-assets/*
+          fail_on_unmatched_files: false
+
+      - name: Prepare unversioned assets for root/Releases
+        id: unversioned
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          set -e
+          mkdir -p repo-unversioned
+
+          MAPPINGS=(
+            "ArgoTunnel-${TAG}.apk:ArgoTunnel.apk"
+            "ArgoTunnel-${TAG}.exe:ArgoTunnel.exe"
+            "ArgoTunnel-${TAG}.ipa:ArgoTunnel.ipa"
+            "ArgoTunnel-linux-amd64-${TAG}:ArgoTunnel-linux-amd64"
+            "ArgoTunnel-linux-arm64-${TAG}:ArgoTunnel-linux-arm64"
+            "ArgoTunnel-linux-arm-${TAG}:ArgoTunnel-linux-arm"
+            "ArgoTunnel-openwrt-${TAG}.tar.gz:ArgoTunnel-openwrt.tar.gz"
+            "argoscan-${TAG}:argoscan"
+          )
+
+          echo "📂 محتوای versioned-assets:"
+          ls -la versioned-assets/ || true
+
+          for pair in "${MAPPINGS[@]}"; do
+            src="${pair%%:*}"
+            dst="${pair##*:}"
+            if [ -f "versioned-assets/${src}" ]; then
+              cp "versioned-assets/${src}" "repo-unversioned/${dst}"
+              echo "✅ کپی شد: ${src} -> ${dst}"
+            else
+              echo "❌ فایل مبدأ پیدا نشد: versioned-assets/${src}"
+              exit 1
+            fi
+          done
+
+          echo "📁 فایل‌های بدون نسخه نهایی:"
+          ls -la repo-unversioned/
+
+      - name: Push unversioned files to root/Releases folder
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}.git"
+          git fetch origin ${{ github.event.repository.default_branch }}
+          git checkout ${{ github.event.repository.default_branch }}
+          git pull --rebase origin ${{ github.event.repository.default_branch }} || true
+
+          rm -rf Releases
+          mkdir Releases
+          cp repo-unversioned/* Releases/
+
+          git add Releases/
+          git commit -m "⬆️ آپدیت خودکار فایل‌های بدون نسخه به ${TAG} (امضای debug) [skip ci]" || echo "هیچ تغییری برای commit نیست"
+          git push origin HEAD:${{ github.event.repository.default_branch }}
