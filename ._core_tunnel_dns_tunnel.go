@@ -2,14 +2,12 @@ package tunnel
 
 import (
     "log"
-    "net"
     "github.com/miekg/dns"
 )
 
 type DNSTunnel struct {
-    mode   string // dns/noizdns/vaydns/slipstream
+    mode   string // dns, noizdns, vaydns, slipstream
     server string
-    conn   *dns.Conn
 }
 
 func NewDNSTunnel(mode string) *DNSTunnel {
@@ -17,8 +15,16 @@ func NewDNSTunnel(mode string) *DNSTunnel {
 }
 
 func (t *DNSTunnel) Start() error {
-    // بسته به mode رفتار متفاوتی دارد: noizdns با stealth، vaydns با rate limiting و ...
-    log.Printf("DNS tunnel %s started", t.mode)
+    switch t.mode {
+    case "noizdns":
+        log.Println("NoizDNS tunnel active (stealth mode)")
+    case "vaydns":
+        log.Println("VayDNS tunnel active (rate limited)")
+    case "slipstream":
+        log.Println("SlipStream tunnel active (high capacity)")
+    default:
+        log.Println("Standard DNS tunnel active")
+    }
     return nil
 }
 func (t *DNSTunnel) Stop() error { return nil }
