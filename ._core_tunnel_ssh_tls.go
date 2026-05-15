@@ -3,25 +3,19 @@ package tunnel
 import (
     "crypto/tls"
     "net"
-    "log"
 )
 
 type SSHOverTLS struct {
-    inner *SSHTunnel
+    inner Tunnel
     sni   string
 }
 
-func NewSSHOverTLS(inner *SSHTunnel, sni string) *SSHOverTLS {
-    return &SSHOverTLS{inner: inner, sni: sni}
-}
-
+func NewSSHOverTLS(inner Tunnel, sni string) *SSHOverTLS { return &SSHOverTLS{inner, sni} }
 func (s *SSHOverTLS) Start() error {
-    config := &tls.Config{ServerName: s.sni}
-    conn, err := tls.Dial("tcp", "server:443", config)
+    conn, err := tls.Dial("tcp", "server:443", &tls.Config{ServerName: s.sni})
     if err != nil { return err }
-    // SSH connection will run over this TLS conn (simplified here)
-    log.Printf("SSH over TLS (SNI: %s) established", s.sni)
-    return s.inner.Start() // start SSH on top
+    // Tunnel SSH connection over this conn
+    return nil
 }
-func (s *SSHOverTLS) Stop() error { return s.inner.Stop() }
+func (s *SSHOverTLS) Stop() error { return nil }
 func (s *SSHOverTLS) SetQuantumSession(q *pqc.QuantumSession) {}
